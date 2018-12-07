@@ -1,7 +1,18 @@
 import numpy as np
-from _overlapped import NULL
-from Queue import PriorityQueue
+from collections import namedtuple, deque, Counter, defaultdict
+import heapq
+from enum import Enum
 
+class RobotPath(Enum):
+    forward = 0
+    backTrace = 1
+
+dir_move = {'up': [0, 1], 'right': [1, 0], 'down': [0, -1], 'left': [-1, 0]}
+dir_sensors = {'up': ['left', 'up', 'right'], 'right': ['up', 'right', 'down'],
+               'down': ['right', 'down', 'left'], 'left': ['down', 'left', 'up']}
+
+#goal_bounds  = []
+firstTime = True
 class Robot(object):
     def __init__(self, maze_dim):
         '''
@@ -16,8 +27,12 @@ class Robot(object):
         self.maze_dim = maze_dim
         self.path = []
         self.root = Node()
-        goal_bounds = [maze_dim/2 - 1, maze_dim/2]
-        
+        self.goal_bounds = [maze_dim/2 - 1, maze_dim/2]
+        self.currentNode = self.root
+        self.currentPath = RobotPath.forward
+        self.backTracePath = []
+        self.frontier = PriorityQueue(self.cost)
+        self.explored = set()
 
     def next_move(self, sensors):
         '''
@@ -43,14 +58,27 @@ class Robot(object):
 
         rotation = 0
         movement = 0
-        
+        '''
         if len(self.path) == 0:
             pass
         else:
-            best_first_graph_search(self, self.root, sensors)
-            pass
+            node = best_first_graph_search(self, self.currentNode, sensors, cost)
+            self.currentNode = node
+        '''
+        print('nextmove', self.currentPath)
+        node = []
+        if self.currentPath == RobotPath.forward:
+            rotation, movement = self.best_first_graph_search(self.currentNode, sensors, self.cost)
+            print(rotation, movement)
+            return rotation, movement
+        else:
+            rotation, movement = self.processBackTrace()
+            print(rotation, movement)
+            return rotation, movement
+        
+        
 
-        return rotation, movement
+        
     
     def leastNumberSteps(self):
         return 0
@@ -61,53 +89,296 @@ class Robot(object):
         else:
             return False
         
+    def cost(self, node): #path cost + heuristic
+        return node.mazeDistance + self.heuristic(node, self.manhattanHeuristic)
+
+    def heuristic(self, node, f):
+        min0 = min(f((self.goal_bounds[0], self.goal_bounds[0]),node.state), -100000)
+        min1 = min(f((self.goal_bounds[0], self.goal_bounds[1]),node.state), min0)
+        min2 = min(f((self.goal_bounds[1], self.goal_bounds[0]),node.state), min1)
+        min3 = min(f((self.goal_bounds[1], self.goal_bounds[1]),node.state), min2)
+        return min3
+    
+    def manhattanHeuristic(self, xy1, xy2):
+        return abs(xy1[0] - xy2[0]) + abs(xy1[1] - xy2[1])
+    
+    def euclideanHeuristic(self, xy1, xy2):
+        return ( (xy1[0] - xy2[0]) ** 2 + (xy1[1] - xy2[1]) ** 2 ) ** 0.5
+        
+    
+    def best_first_graph_search(self, node, sensors, f):
+        '''
+        if robot.goal_test(node.state):
+            return node
+        frontier = PriorityQueue(cost)
+        frontier.append(node)
+        explored = set()
+        while frontier:
+            node = frontier.pop()
+            if robot.goal_test(node.state):
+                return node
+            explored.add(node.state)
+            for child in node.expand(sensors):
+                if child.state not in explored and child not in frontier:
+                    frontier.put((child.distance, child))
+                elif child in frontier:
+                    incumbent = frontier[child]
+                    if f(child) < f(incumbent):
+                        # del frontier[incumbent]
+                        frontier.append(child)
+        return None
+        '''
+        #frontier.append(node)
+        junction = [1 for i in sensors if i>0]
+        newNode = []
+        if all(junction) == False:
+            #pass# it is a dead end
+            print('dead end')
+            node.mazeDistance = 100000
+            self.currentPath == RobotPath.backTrace
+            self.backTracePath = [node, node.parent]
+            global firstTime
+            firstTime = True
+            return 0,-1*node.value
+            #set mazedistance to infinity so that this node will never be reached
+        else:
+            #pass # it is not a junction
+            childrenNodes = node.expand(sensors)
+            self.explored.add(node.state)
+            for child in childrenNodes:
+                if child.state not in self.explored and child not in self.frontier:
+                    self.frontier.append(child)
+                    #node = child
+                elif child in self.frontier:
+                    incumbent = self.frontier[child]
+                    if f(child) < f(incumbent):
+                        # del frontier[incumbent]
+                        self.frontier.append(child)
+        
+            newNode = self.frontier.pop()
+            print('b4newNode ', newNode.direction, newNode.distance, sensors, newNode.state, newNode.heading)
+            if newNode in childrenNodes:
+                self.currentPath == RobotPath.forward
+                self.backTracePath = []
+                self.currentNode = newNode
+                print('newNode ', newNode.direction, newNode.distance, sensors, newNode.state, newNode.heading)
+                return newNode.direction, newNode.distance
+            else:
+                self.currentPath = RobotPath.backTrace
+                firstTime = True
+                self.backTracePath = [node, newNode]
+                return 0,-1*node.distance
+                
+                #rotation,movement = self.processBackTrace()
+                #return rotation, movement
+         
+        
+        
+        
+    def processBackTrace(self):
+        
+        node = self.backTracePath[0]
+        #Process Code
+        checkPath = self.checkChildRecusively(node.parent)
+        print('processBackTrace', checkPath)
+        if checkPath:
+            
+            if node.parent == self.backTracePath[1]:
+                #handle direction
+                if node.heading != self.backTracePath[1].heading:
+                    if (node.heading == 'up' and selfbackTracePath[1].heading == 'down') or (node.heading == 'down' and selfbackTracePath[1].heading == 'or') or (node.heading == 'left' and self.backTracePath[1].heading == 'right') or (node.heading == 'right' and self.backTracePath[1].heading == 'left'):
+                        return -90,0
+                    else:
+                        self.currentNode = node.parent
+                        self.currentPath == RobotPath.forward
+                        self.backTracePath = []
+                        direction = 0
+                        if (node.heading == 'up' and self.backTracePath[1].heading == 'left'):
+                            direction = -90
+                        if (node.heading == 'up' and self.backTracePath[1].heading == 'right'):
+                            direction = 90
+                        if (node.heading == 'down' and self.backTracePath[1].heading == 'left'):
+                            direction = 90
+                        if (node.heading == 'down' and self.backTracePath[1].heading == 'right'):
+                            direction = -90
+                        return direction, 0
+                else:
+                    self.currentNode = node.parent
+                    self.currentPath == RobotPath.forward
+                    self.backTracePath = []
+                    return 0,0 # can start the forward A* process
+            else:
+                #Semi forward code
+                global firstTime
+                if firstTime:
+                    firstTime = False
+                    direction = -1*(node.direction) + node.parent.direction
+                    value = 0
+                    self.backTracePath[0] = node.parent
+                    print('firstTIme', node.direction, node.parent.direction)
+                    return direction, value
+                if node == self.backTracePath[1]:
+                    if node.heading != self.backTracePath[1].heading:
+                        if (node.heading == 'up' and selfbackTracePath[1].heading == 'down') or (node.heading == 'down' and selfbackTracePath[1].heading == 'or') or (node.heading == 'left' and self.backTracePath[1].heading == 'right') or (node.heading == 'right' and self.backTracePath[1].heading == 'left'):
+                            return -90,0
+                        else:
+                            self.currentNode = node.parent
+                            self.currentPath == RobotPath.forward
+                            self.backTracePath = []
+                            direction = 0
+                            if (node.heading == 'up' and self.backTracePath[1].heading == 'left'):
+                                direction = -90
+                            if (node.heading == 'up' and self.backTracePath[1].heading == 'right'):
+                                direction = 90
+                            if (node.heading == 'down' and self.backTracePath[1].heading == 'left'):
+                                direction = 90
+                            if (node.heading == 'down' and self.backTracePath[1].heading == 'right'):
+                                direction = -90
+                            return direction, 0
+                    else:
+                        self.currentNode = node
+                        self.currentPath = RobotPath.forward
+                        self.backTracePath = []
+                        print('node ', node.direction, node.distance, node.state, node.heading)
+                        return 0,0 # can start the forward A* process
+                else:
+                    for nd in self.backTracePath[0].childNodes.values():
+                        if self.checkChildRecusively(nd):
+                            self.backTracePath[0] = nd
+                            return nd.direction, nd.distance
+                    print('Not suppose to reach here')
+        else:
+            #if len(node.childNodes.values()[0].chilNodes.values()) == 0: #the very first one in backtrace path for not considering direction
+            if False:
+                #node = node.parent
+                self.backTracePath[0] = node
+                return 0,-1*node.value
+            else:
+                reverseDirection = -1*(node.direction) # how to find which child node
+                node = node.parent
+                self.backTracePath[0] = node
+                return 0,-1*node.distance
+        return node
+        
+    def checkChildRecusively(self, node):
+        if node == self.backTracePath[1]:
+            return True
+        try:
+            for nd in node.childNodes.values():
+                if nd == self.backTracePath[1]:
+                    return True
+                if self.checkChildRecusively(nd):
+                    return True
+        except:
+            print('An error occured.')
+        return False
         
 class Node(object):
-    def __init__(self, parent = NULL, distance = 0, state=(0,0), heading='up'):
+    def __init__(self, parent = [], distance = 0, mazeDistance = 0, state=(0,0), heading= 'up', direction = 0):
         self.parent = parent
-        self.distance = distance #distance = path cost + neuristic cost to be coded
+        self.depth = 0
+        if parent:
+            self.depth = parent.depth + 1
+        self.distance = distance #distance = path cost
+        self.mazeDistance = mazeDistance
         self.state = state
         self.heading = heading
+        self.direction = direction
+        self.childNodes = dict()
     
     def expand(self, sensors):
-        #return (self.child_node(problem, action) for action in problem.actions(self.state))
-        return [(i,j) for i in [-90,0,90] for j in sensors if j!=0]
+        #return (self.child_node(problem, action) for action in problem.actions(self.state))        
+        #nodesInfo = [(j,k) for i,j in enumerate([-90,0,90]) for k in range(1,min(sensors[i],3)+1) if sensors[i]!=0]
+        nodesInfo = [(j,1) for i,j in enumerate([-90,0,90]) if sensors[i]!=0]
+        #print(nodesInfo, sensors)
+        #childNodes = dict()
+        for key,value in nodesInfo:
+            state = (0,0)
+            if key==-90:
+                heading = dir_sensors[self.heading][0]
+                '''
+                if value > 0:
+                    state = (self.state[0]-j, self.state[1])
+                else:
+                    state = (self.state[0]-j, self.state[1])
+                '''
+                state = (self.state[0]+(value * dir_move[heading][0])), (self.state[1]+(value * dir_move[heading][1]))
+            elif key==0:
+                heading = dir_sensors[self.heading][1]
+                state = (self.state[0]+(value * dir_move[heading][0])), (self.state[1]+(value * dir_move[heading][1]))
+            else:
+                heading = dir_sensors[self.heading][2]
+                state = (self.state[0]+(value * dir_move[heading][0])), (self.state[1]+(value * dir_move[heading][1]))
+            self.childNodes[(key,value)] = Node(self, value, value + self.distance, state, heading, key)
+        return self.childNodes.values()
     
+    def __eq__(self, other):
+        return isinstance(other, Node) and self.state == other.state
+
+    def __hash__(self):
+        return hash(self.state)
+        
+    '''
     def child_node(self, problem, action):
         "[Figure 3.10]"
         next_state = problem.result(self.state, action)
         return Node(next_state, self, action,
                     problem.path_cost(self.path_cost, self.state,
                                       action, next_state))
+    '''
     
+class Queue:
+    """Queue is an abstract class/interface. There are three types:
+        Stack(): A Last In First Out Queue.
+        FIFOQueue(): A First In First Out Queue.
+        PriorityQueue(order, f): Queue in sorted order (default min-first).
+    Each type supports the following methods and functions:
+        q.append(item)  -- add an item to the queue
+        q.extend(items) -- equivalent to: for item in items: q.append(item)
+        q.pop()         -- return the top item from the queue
+        len(q)          -- number of items in q (also q.__len())
+        item in q       -- does q contain item?
+    Note that isinstance(Stack(), Queue) is false, because we implement stacks
+    as lists.  If Python ever gets interfaces, Queue will be an interface."""
+
+    def __init__(self):
+        raise NotImplementedError
+
+    def extend(self, items):
+        for item in items:
+            self.append(item)
+
+class PriorityQueue(Queue):
+    """A queue in which the minimum element (as determined by f and
+    order) is returned first.  Also supports dict-like lookup.
+
+    MODIFIED FROM AIMA VERSION
+        - Use heapq
+        - Use an additional dict to track membership
+    """
+
+    def __init__(self, order=None, f=lambda x: x):
+        self.A = []
+        self._A = Counter()
+        self.f = f
+
+    def append(self, item):
+        heapq.heappush(self.A, (self.f(item), item))
+        self._A[item] += 1
+
+    def __len__(self):
+        return len(self.A)
+
+    def pop(self):
+        _, item = heapq.heappop(self.A)
+        self._A[item] -= 1
+        return item
+
+    def __contains__(self, item):
+        return self._A[item] > 0
+
+    def __getitem__(self, key):
+        if self._A[key] > 0:
+            return key
         
-        
-def best_first_graph_search(robot, node, sensors):
-    """Search the nodes with the lowest f scores first.
-    You specify the function f(node) that you want to minimize; for example,
-    if f is a heuristic estimate to the goal, then we have greedy best
-    first search; if f is node.depth then we have breadth-first search.
-    There is a subtlety: the line "f = memoize(f, 'f')" means that the f
-    values will be cached on the nodes as they are computed. So after doing
-    a best first search you can examine the f values of the path returned."""
-    #f = memoize(f, 'f')
-    #node = Node(problem.initial)
-    if robot.goal_test(node.state):
-        return node
-    frontier = PriorityQueue()
-    frontier.put((-node.distance, node))
-    explored = set()
-    while frontier:
-        node = frontier.get()
-        if robot.goal_test(node.state):
-            return node
-        explored.add(node.state)
-        for child in node.expand(sensors):
-            if child.state not in explored and child not in frontier:
-                frontier.put((child.distance, child))
-            elif child in frontier:
-                incumbent = frontier[child]
-                if f(child) < f(incumbent):
-                    # del frontier[incumbent]
-                    frontier.append(child)
-    return None
+
