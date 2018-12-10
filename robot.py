@@ -6,6 +6,7 @@ from enum import Enum
 class RobotPath(Enum):
     forward = 0
     backTrace = 1
+    fastFwd = 2
 
 dir_move = {'up': [0, 1], 'right': [1, 0], 'down': [0, -1], 'left': [-1, 0]}
 dir_sensors = {'up': ['left', 'up', 'right'], 'right': ['up', 'right', 'down'],
@@ -13,6 +14,7 @@ dir_sensors = {'up': ['left', 'up', 'right'], 'right': ['up', 'right', 'down'],
 
 #goal_bounds  = []
 firstTime = True
+coord = (0,0,'up')
 class Robot(object):
     def __init__(self, maze_dim):
         '''
@@ -28,11 +30,15 @@ class Robot(object):
         self.path = []
         self.root = Node()
         self.goal_bounds = [maze_dim/2 - 1, maze_dim/2]
+        print('goal bounds', self.goal_bounds)
         self.currentNode = self.root
         self.currentPath = RobotPath.forward
         self.backTracePath = []
-        self.frontier = PriorityQueue(self.cost)
+        self.fwdNode = []
+        self.frontier = PriorityQueue(min, self.cost)
+        #self.frontier.append(self.root)
         self.explored = set()
+        self.explored.add(self.root.state)
 
     def next_move(self, sensors):
         '''
@@ -67,18 +73,47 @@ class Robot(object):
         '''
         print('nextmove', self.currentPath)
         node = []
+        global coord
         if self.currentPath == RobotPath.forward:
             rotation, movement = self.best_first_graph_search(self.currentNode, sensors, self.cost)
-            print(rotation, movement)
+            self.nextState(rotation, movement)
+            print(rotation, movement, coord)
+            return rotation, movement
+        elif self.currentPath == RobotPath.backTrace:
+            rotation, movement = self.processBackTrace()
+            self.nextState(rotation, movement)
+            print(rotation, movement, coord)
             return rotation, movement
         else:
-            rotation, movement = self.processBackTrace()
-            print(rotation, movement)
-            return rotation, movement
+            print(self.currentNode,self.fwdNode)
+            if self.currentNode.state == self.fwdNode.state:
+                self.currentPath = RobotPath.forward
+                self.fwdNode = []
+                print('0,0,', coord)
+                return 0,0
+            else:
+                newNode = []
+                for nd in self.fwdNode.childNodes:
+                    if self.checkChildRecusively1(nd):
+                        newNode = nd
+                        break
+                self.currentNode = newNode
+                print('FFWDNM ', newNode.direction, newNode.distance, sensors, newNode.state, newNode.heading)
+                self.nextState(newNode.direction, newNode.distance)
+                print(newNode.direction, newNode.distance, coord)
+                return newNode.direction, newNode.distance
         
         
-
-        
+    def nextState(self, rotation, movement):
+        dr = 0
+        global coord
+        if rotation==-90:
+            dr = dir_sensors[coord[2]][0]
+        elif rotation == 0:
+            dr = dir_sensors[coord[2]][1]
+        else:
+            dr = dir_sensors[coord[2]][2]
+        coord = (movement*dir_move[dr][0] + coord[0],  movement*dir_move[dr][1] + coord[1], dr)
     
     def leastNumberSteps(self):
         return 0
@@ -93,7 +128,7 @@ class Robot(object):
         return node.mazeDistance + self.heuristic(node, self.manhattanHeuristic)
 
     def heuristic(self, node, f):
-        min0 = min(f((self.goal_bounds[0], self.goal_bounds[0]),node.state), -100000)
+        min0 = min(f((self.goal_bounds[0], self.goal_bounds[0]),node.state), 100000)
         min1 = min(f((self.goal_bounds[0], self.goal_bounds[1]),node.state), min0)
         min2 = min(f((self.goal_bounds[1], self.goal_bounds[0]),node.state), min1)
         min3 = min(f((self.goal_bounds[1], self.goal_bounds[1]),node.state), min2)
@@ -163,6 +198,17 @@ class Robot(object):
                 self.currentNode = newNode
                 print('newNode ', newNode.direction, newNode.distance, sensors, newNode.state, newNode.heading)
                 return newNode.direction, newNode.distance
+            elif self.checkChildRecusively1(node, newNode):
+                self.currentPath = RobotPath.fastFwd
+                self.backTracePath = []
+                self.fwdNode = newNode
+                for nd in node.childNodes:
+                    if self.checkChildRecusively1(nd, self.fwdNode):
+                        newNode = nd
+                        break
+                self.currentNode = newNode
+                print('FFWD ', newNode.direction, newNode.distance, sensors, newNode.state, newNode.heading)
+                return newNode.direction, newNode.distance
             else:
                 self.currentPath = RobotPath.backTrace
                 firstTime = True
@@ -179,11 +225,13 @@ class Robot(object):
         
         node = self.backTracePath[0]
         #Process Code
-        checkPath = self.checkChildRecusively(node.parent)
+        checkPath = True
+        if node.parent:
+            checkPath = self.checkChildRecusively(node.parent) 
         print('processBackTrace', checkPath)
         if checkPath:
-            
-            if node.parent == self.backTracePath[1]:
+            #if node == self.backTracePath[1]:
+            if node.parent.state == self.backTracePath[1].state:
                 #handle direction
                 if node.heading != self.backTracePath[1].heading:
                     if (node.heading == 'up' and selfbackTracePath[1].heading == 'down') or (node.heading == 'down' and selfbackTracePath[1].heading == 'or') or (node.heading == 'left' and self.backTracePath[1].heading == 'right') or (node.heading == 'right' and self.backTracePath[1].heading == 'left'):
@@ -211,15 +259,52 @@ class Robot(object):
                 #Semi forward code
                 global firstTime
                 if firstTime:
+                    '''
                     firstTime = False
                     direction = -1*(node.direction) + node.parent.direction
                     value = 0
                     self.backTracePath[0] = node.parent
-                    print('firstTIme', node.direction, node.parent.direction)
+                    print('firstTIme', direction, value)
                     return direction, value
-                if node == self.backTracePath[1]:
+                    '''
+                    if node.heading != node.parent.heading:
+                        if (node.heading == 'up' and node.parent.heading == 'down') or (node.heading == 'down' and node.parent.heading == 'or') or (node.heading == 'left' and node.parent.heading == 'right') or (node.heading == 'right' and node.parent.heading == 'left'):
+                            firstTime = True
+                            print('firstTIme if -90, 0')
+                            return -90,0
+                        else:
+                            firstTime = False
+                            direction = 0
+                            if (node.heading == 'up' and node.parent.heading == 'left'):
+                                direction = -90
+                            if (node.heading == 'up' and node.parent.heading == 'right'):
+                                direction = 90
+                            if (node.heading == 'down' and node.parent.heading == 'left'):
+                                direction = 90
+                            if (node.heading == 'down' and node.parent.heading == 'right'):
+                                direction = -90
+                            if (node.heading == 'left' and node.parent.heading == 'up'):
+                                direction = 90
+                            if (node.heading == 'left' and node.parent.heading == 'down'):
+                                direction = -90
+                            if (node.heading == 'right' and node.parent.heading == 'up'):
+                                direction = -90
+                            if (node.heading == 'right' and node.parent.heading == 'down'):
+                                direction = 90
+                            self.backTracePath[0] = node.parent
+                            print('firstTIme else', direction, ' 0')
+                            return direction, 0
+                    else:
+                        firstTime = False
+                        direction = 0
+                        value = 0
+                        self.backTracePath[0] = node.parent
+                        print('firstTIme', direction, value)
+                        return direction, value
+                    
+                if node.state == self.backTracePath[1].state:
                     if node.heading != self.backTracePath[1].heading:
-                        if (node.heading == 'up' and selfbackTracePath[1].heading == 'down') or (node.heading == 'down' and selfbackTracePath[1].heading == 'or') or (node.heading == 'left' and self.backTracePath[1].heading == 'right') or (node.heading == 'right' and self.backTracePath[1].heading == 'left'):
+                        if (node.heading == 'up' and self.backTracePath[1].heading == 'down') or (node.heading == 'down' and self.backTracePath[1].heading == 'or') or (node.heading == 'left' and self.backTracePath[1].heading == 'right') or (node.heading == 'right' and self.backTracePath[1].heading == 'left'):
                             return -90,0
                         else:
                             self.currentNode = node.parent
@@ -242,7 +327,7 @@ class Robot(object):
                         print('node ', node.direction, node.distance, node.state, node.heading)
                         return 0,0 # can start the forward A* process
                 else:
-                    for nd in self.backTracePath[0].childNodes.values():
+                    for nd in self.backTracePath[0].childNodes:
                         if self.checkChildRecusively(nd):
                             self.backTracePath[0] = nd
                             return nd.direction, nd.distance
@@ -257,20 +342,35 @@ class Robot(object):
                 reverseDirection = -1*(node.direction) # how to find which child node
                 node = node.parent
                 self.backTracePath[0] = node
-                return 0,-1*node.distance
+                return reverseDirection,-1*node.distance
         return node
         
     def checkChildRecusively(self, node):
-        if node == self.backTracePath[1]:
+        if node.state == self.backTracePath[1].state:
             return True
         try:
-            for nd in node.childNodes.values():
-                if nd == self.backTracePath[1]:
+            for nd in node.childNodes:
+                if nd.state == self.backTracePath[1].state:
                     return True
                 if self.checkChildRecusively(nd):
                     return True
         except:
-            print('An error occured.')
+            print('An error occured checkChildRecusively.')
+        return False
+    
+    def checkChildRecusively1(self, start, end):
+        #print('checkChildRecusively1 ', start.state, end.state)
+        if start.state == end.state:
+            return True
+        try:
+            for nd in start.childNodes:
+                #print('nd ', nd.state )
+                if nd.state == end.state:
+                    return True
+                if self.checkChildRecusively(nd, end):
+                    return True
+        except:
+            print('An error occured checkChildRecusively1.')
         return False
         
 class Node(object):
@@ -284,12 +384,12 @@ class Node(object):
         self.state = state
         self.heading = heading
         self.direction = direction
-        self.childNodes = dict()
+        self.childNodes = []
     
     def expand(self, sensors):
         #return (self.child_node(problem, action) for action in problem.actions(self.state))        
-        #nodesInfo = [(j,k) for i,j in enumerate([-90,0,90]) for k in range(1,min(sensors[i],3)+1) if sensors[i]!=0]
-        nodesInfo = [(j,1) for i,j in enumerate([-90,0,90]) if sensors[i]!=0]
+        nodesInfo = [(j,k) for i,j in enumerate([-90,0,90]) for k in range(1,min(sensors[i],3)+1) if sensors[i]!=0]
+        #nodesInfo = [(j,1) for i,j in enumerate([-90,0,90]) if sensors[i]!=0]
         #print(nodesInfo, sensors)
         #childNodes = dict()
         for key,value in nodesInfo:
@@ -309,15 +409,21 @@ class Node(object):
             else:
                 heading = dir_sensors[self.heading][2]
                 state = (self.state[0]+(value * dir_move[heading][0])), (self.state[1]+(value * dir_move[heading][1]))
-            self.childNodes[(key,value)] = Node(self, value, value + self.distance, state, heading, key)
-        return self.childNodes.values()
+            #self.childNodes[(key,value)] = Node(self, value, value + self.distance, state, heading, key)
+            self.childNodes.append(Node(self, value, value + self.distance, state, heading, key))
+        return self.childNodes
+    '''
+    def __repr__(self):
+        return "<Node %s>" % (self.state,)
+    
     
     def __eq__(self, other):
         return isinstance(other, Node) and self.state == other.state
-
+        #return self.__dict__ == other.__dict__
+    
     def __hash__(self):
         return hash(self.state)
-        
+    '''
     '''
     def child_node(self, problem, action):
         "[Figure 3.10]"
@@ -370,7 +476,9 @@ class PriorityQueue(Queue):
         return len(self.A)
 
     def pop(self):
+        #print(self.A)
         _, item = heapq.heappop(self.A)
+        #print('PQ Popped ', self._A[item])
         self._A[item] -= 1
         return item
 
