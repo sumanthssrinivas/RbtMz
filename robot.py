@@ -213,6 +213,7 @@ class Robot(object):
                 self.currentPath = RobotPath.backTrace
                 firstTime = True
                 self.backTracePath = [node, newNode]
+                print('BK', newNode.direction, newNode.distance, sensors, newNode.state, newNode.heading)
                 return 0,-1*node.distance
                 
                 #rotation,movement = self.processBackTrace()
@@ -228,7 +229,7 @@ class Robot(object):
         checkPath = True
         if node.parent:
             checkPath = self.checkChildRecusively(node.parent) 
-        print('processBackTrace', checkPath)
+        print('processBackTrace', checkPath, self.backTracePath)
         if checkPath:
             #if node == self.backTracePath[1]:
             if node.parent.state == self.backTracePath[1].state:
@@ -237,8 +238,8 @@ class Robot(object):
                     if (node.heading == 'up' and selfbackTracePath[1].heading == 'down') or (node.heading == 'down' and selfbackTracePath[1].heading == 'or') or (node.heading == 'left' and self.backTracePath[1].heading == 'right') or (node.heading == 'right' and self.backTracePath[1].heading == 'left'):
                         return -90,0
                     else:
-                        self.currentNode = node.parent
-                        self.currentPath == RobotPath.forward
+                        self.currentNode = self.backTracePath[1]
+                        self.currentPath = RobotPath.forward
                         self.backTracePath = []
                         direction = 0
                         if (node.heading == 'up' and self.backTracePath[1].heading == 'left'):
@@ -251,9 +252,10 @@ class Robot(object):
                             direction = -90
                         return direction, 0
                 else:
-                    self.currentNode = node.parent
-                    self.currentPath == RobotPath.forward
+                    self.currentNode = self.backTracePath[1]
+                    self.currentPath = RobotPath.forward
                     self.backTracePath = []
+                    print('eq', self.currentNode)
                     return 0,0 # can start the forward A* process
             else:
                 #Semi forward code
@@ -307,8 +309,8 @@ class Robot(object):
                         if (node.heading == 'up' and self.backTracePath[1].heading == 'down') or (node.heading == 'down' and self.backTracePath[1].heading == 'or') or (node.heading == 'left' and self.backTracePath[1].heading == 'right') or (node.heading == 'right' and self.backTracePath[1].heading == 'left'):
                             return -90,0
                         else:
-                            self.currentNode = node.parent
-                            self.currentPath == RobotPath.forward
+                            self.currentNode = self.backTracePath[1]
+                            self.currentPath = RobotPath.forward
                             self.backTracePath = []
                             direction = 0
                             if (node.heading == 'up' and self.backTracePath[1].heading == 'left'):
@@ -337,11 +339,13 @@ class Robot(object):
             if False:
                 #node = node.parent
                 self.backTracePath[0] = node
+                print('inside false')
                 return 0,-1*node.value
             else:
                 reverseDirection = -1*(node.direction) # how to find which child node
                 node = node.parent
                 self.backTracePath[0] = node
+                print('revere', reverseDirection)
                 return reverseDirection,-1*node.distance
         return node
         
